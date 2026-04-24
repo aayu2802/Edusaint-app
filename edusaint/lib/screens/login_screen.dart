@@ -3,6 +3,8 @@ import 'signup_screen.dart';
 import 'home_view.dart';
 import '../services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'forgot_password_screen.dart';
+import 'otp_login_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,14 +22,57 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    final response = await AuthService.login(
+      emailController.text.trim(),
+      passwordController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (response["success"] == true && response["data"] != null) {
+      final data = response["data"];
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // ✅ SAVE ALL IMPORTANT DATA
+      await prefs.setString("token", data["access_token"]);
+      await prefs.setString("name", data["user"]["name"]);
+      await prefs.setString("email", data["user"]["email"]);
+      await prefs.setInt("user_id", data["user"]["id"]);
+
+      print("NAME SAVED: ${data["user"]["name"]}");
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeView()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response["message"] ?? "Login failed")),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
     return Scaffold(
       body: Container(
-        width: double.infinity,
-        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF4A6BEE), Color(0xFF3A5DC8)],
@@ -41,20 +86,12 @@ class _LoginScreenState extends State<LoginScreen> {
               width: width * 0.9,
               padding: EdgeInsets.all(width * 0.07),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
               ),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
                       "Welcome Back 👋",
@@ -64,143 +101,92 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.indigo[800],
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      "Login to your account",
-                      style: TextStyle(
-                        fontSize: width * 0.04,
-                        color: Colors.indigo[500],
-                      ),
-                    ),
+
                     SizedBox(height: height * 0.04),
 
-                    // Email
                     TextFormField(
                       controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
                       decoration: InputDecoration(
                         labelText: "Email",
-                        prefixIcon: const Icon(Icons.email_outlined),
+                        prefixIcon: const Icon(Icons.email),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return "Please enter your email";
-                        } else if (!value.contains('@')) {
-                          return "Enter a valid email";
-                        }
-                        return null;
-                      },
+                      validator: (v) => v!.isEmpty ? "Enter email" : null,
                     ),
+
                     SizedBox(height: height * 0.02),
 
-                    // Password
                     TextFormField(
                       controller: passwordController,
                       obscureText: _isObscured,
                       decoration: InputDecoration(
-                        labelText: "Password ",
-                        prefixIcon: const Icon(Icons.lock_outline),
+                        labelText: "Password",
+                        prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isObscured
                                 ? Icons.visibility_off
                                 : Icons.visibility,
-                            color: Colors.indigo,
                           ),
-                          onPressed: () {
-                            setState(() => _isObscured = !_isObscured);
-                          },
+                          onPressed: () =>
+                              setState(() => _isObscured = !_isObscured),
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return "Please enter password";
-                        } else if (value.length < 6) {
-                          return "Password must be at least 6 characters";
-                        }
-                        return null;
-                      },
                     ),
 
-                    SizedBox(height: height * 0.03),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ForgotPasswordScreen(),
+                          ),
+                        ),
+                        child: const Text("Forgot Password?"),
+                      ),
+                    ),
 
-                    // Login Button
+                    SizedBox(height: height * 0.02),
+
+                    // LOGIN BUTTON
                     SizedBox(
                       width: double.infinity,
                       height: height * 0.06,
                       child: ElevatedButton(
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            setState(() => _isLoading = true);
-
-                            final response = await AuthService.login(
-                              emailController.text.trim(),
-                              passwordController.text.trim(),
-                            );
-
-                            setState(() => _isLoading = false);
-
-                            if (response["success"]) {
-                              if (response["data"]["token"] != null) {
-                                SharedPreferences prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setString(
-                                  "token",
-                                  response["data"]["token"],
-                                );
-                              }
-
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const HomeView(),
-                                ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    response["message"] ?? "Login failed",
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 4,
-                        ),
+                        onPressed: _isLoading ? null : _handleLogin,
                         child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Color(0xFF3A5DC8),
-                              )
-                            : Text(
-                                "Log In",
-                                style: TextStyle(
-                                  color: Colors.indigo[800],
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: width * 0.045,
-                                ),
-                              ),
+                            ? const CircularProgressIndicator()
+                            : const Text("Login"),
                       ),
                     ),
 
-                    SizedBox(height: height * 0.04),
+                    SizedBox(height: height * 0.02),
 
-                    // Social Login Buttons
+                    // OTP LOGIN BUTTON
+                    SizedBox(
+                      width: double.infinity,
+                      height: height * 0.06,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const OtpLoginScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text("Login via OTP"),
+                      ),
+                    ),
+
                     SizedBox(height: height * 0.03),
 
-                    // Signup Redirect
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -210,16 +196,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const SignupScreen(),
+                                builder: (_) => const SignupScreen(),
                               ),
                             );
                           },
                           child: const Text(
                             "Sign Up",
-                            style: TextStyle(
-                              color: Colors.indigo,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],

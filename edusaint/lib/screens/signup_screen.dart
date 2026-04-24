@@ -1,9 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'login_screen.dart';
 import 'splash_screen2.dart';
 
@@ -191,10 +189,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (data["token"] != null) {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString("token", data["token"]);
+        String? token =
+            data["token"] ?? data["data"]?["token"] ?? data["access_token"];
+
+        if (token != null && token.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString("token", token);
         }
+
+        if (!mounted) return;
 
         Navigator.pushReplacement(
           context,

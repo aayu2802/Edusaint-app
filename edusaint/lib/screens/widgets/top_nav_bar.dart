@@ -1,20 +1,13 @@
 import 'dart:ui';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:edusaint/screens/settings.dart';
 import 'package:edusaint/screens/notification.dart';
 import 'package:edusaint/screens/leaderboard.dart';
-import 'package:http/http.dart' as http;
 
 class TopNavBar extends StatefulWidget implements PreferredSizeWidget {
   final Color color;
-  final Function(int classId) onClassSelected;
 
-  const TopNavBar({
-    super.key,
-    required this.color,
-    required this.onClassSelected,
-  });
+  const TopNavBar({super.key, required this.color});
 
   @override
   State<TopNavBar> createState() => _TopNavBarState();
@@ -25,12 +18,6 @@ class TopNavBar extends StatefulWidget implements PreferredSizeWidget {
 
 class _TopNavBarState extends State<TopNavBar>
     with SingleTickerProviderStateMixin {
-  List<Map<String, dynamic>> classes = [];
-  Map<String, dynamic>? selectedClass;
-
-  bool isLoadingClasses = true;
-  bool _initialCallbackDone = false;
-
   late AnimationController _controller;
 
   @override
@@ -40,7 +27,6 @@ class _TopNavBarState extends State<TopNavBar>
       vsync: this,
       duration: const Duration(milliseconds: 250),
     );
-    fetchClasses();
   }
 
   @override
@@ -52,51 +38,6 @@ class _TopNavBarState extends State<TopNavBar>
   void _onIconTap(VoidCallback onPressed) {
     _controller.forward(from: 0);
     onPressed();
-  }
-
-  // ================= API CALL =================
-  Future<void> fetchClasses() async {
-    if (!mounted) return;
-    setState(() => isLoadingClasses = true);
-
-    try {
-      final res = await http.get(
-        Uri.parse('https://byte.edusaint.in/api/v1/classes'),
-      );
-
-      final Map<String, dynamic> json =
-          jsonDecode(res.body) as Map<String, dynamic>;
-
-      // ✅ FIX: support both `data` & `classes`
-      final List? data = json['data'] ?? json['classes'];
-
-      if (data != null && data.isNotEmpty) {
-        classes = data
-            .map<Map<String, dynamic>>(
-              (e) => Map<String, dynamic>.from(e as Map),
-            )
-            .toList();
-
-        selectedClass ??= classes.first;
-
-        // ✅ fire callback ONLY ONCE
-        if (!_initialCallbackDone && selectedClass != null) {
-          final classId = int.tryParse(selectedClass!['id'].toString());
-          if (classId != null) {
-            _initialCallbackDone = true;
-            widget.onClassSelected(classId);
-          }
-        }
-      } else {
-        classes = [];
-        selectedClass = null;
-      }
-    } catch (e) {
-      debugPrint("Class fetch error: $e");
-    }
-
-    if (!mounted) return;
-    setState(() => isLoadingClasses = false);
   }
 
   @override
@@ -144,6 +85,7 @@ class _TopNavBarState extends State<TopNavBar>
     );
   }
 
+  // ---------------- LOGO ----------------
   Widget _buildLogo() {
     return Row(
       children: const [
@@ -161,56 +103,10 @@ class _TopNavBarState extends State<TopNavBar>
     );
   }
 
+  // ---------------- RIGHT ICONS ----------------
   Widget _buildRightSection(BuildContext context) {
     return Row(
       children: [
-        Container(
-          margin: const EdgeInsets.only(right: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          height: 38,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.18)),
-          ),
-          alignment: Alignment.center,
-          child: isLoadingClasses
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : DropdownButtonHideUnderline(
-                  child: DropdownButton<Map<String, dynamic>>(
-                    value: selectedClass,
-                    dropdownColor: const Color(0xFF0E152B),
-                    icon: const Icon(
-                      Icons.arrow_drop_down,
-                      color: Colors.white,
-                    ),
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setState(() => selectedClass = value);
-
-                      final classId = int.tryParse(value['id'].toString());
-                      if (classId != null) {
-                        widget.onClassSelected(classId);
-                      }
-                    },
-                    items: classes.map((cls) {
-                      return DropdownMenuItem<Map<String, dynamic>>(
-                        value: cls,
-                        child: Text(
-                          cls['name'],
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-        ),
         _icon(Icons.notifications, () {
           Navigator.push(
             context,
@@ -233,9 +129,10 @@ class _TopNavBarState extends State<TopNavBar>
     );
   }
 
+  // ---------------- ICON ----------------
   Widget _icon(IconData icon, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       child: GestureDetector(
         onTap: () => _onIconTap(onTap),
         child: ScaleTransition(

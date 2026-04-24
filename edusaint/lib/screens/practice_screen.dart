@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:ui';
+import 'package:edusaint/screens/practice_detail_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'MainScaffold.dart';
 
 class PracticeScreen extends StatefulWidget {
@@ -9,300 +14,350 @@ class PracticeScreen extends StatefulWidget {
 }
 
 class _PracticeScreenState extends State<PracticeScreen> {
+  int? _classId;
+  String? _authToken;
+
+  bool isLoading = true;
+
+  List<Course> subjects = [];
+  List<ClassItem> classes = [];
+  ClassItem? selectedClass;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  // ================= INIT =================
+  Future<void> _initialize() async {
+    await _loadToken();
+    await _loadSavedClass();
+    await _loadClasses();
+    await _loadSubjects();
+  }
+
+  Future<void> _loadToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    _authToken = prefs.getString("token");
+  }
+
+  Future<void> _loadSavedClass() async {
+    final prefs = await SharedPreferences.getInstance();
+    _classId = prefs.getInt("selected_class_id") ?? 6;
+  }
+
+  Future<void> _saveClass(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt("selected_class_id", id);
+  }
+
+  // ================= CLASSES =================
+  Future<void> _loadClasses() async {
+    try {
+      final res = await http.get(
+        Uri.parse("https://byte.edusaint.in/api/v1/classes"),
+        headers: {
+          'Authorization': 'Bearer $_authToken',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        final List data = decoded['data'] ?? [];
+
+        if (data.isNotEmpty) {
+          classes = data.map((e) => ClassItem.fromJson(e)).toList();
+        }
+      }
+
+      if (classes.isEmpty) {
+        classes = List.generate(
+          12,
+          (i) => ClassItem(id: i + 1, name: "Class ${i + 1}"),
+        );
+      }
+
+      selectedClass = classes.firstWhere(
+        (c) => c.id == _classId,
+        orElse: () => classes.first,
+      );
+
+      _classId = selectedClass!.id;
+
+      setState(() {});
+    } catch (e) {
+      debugPrint("Class Error: $e");
+    }
+  }
+
+  // ================= SUBJECTS =================
+  Future<void> _loadSubjects() async {
+    if (_classId == null) return;
+
+    setState(() => isLoading = true);
+
+    try {
+      final res = await http.get(
+        Uri.parse("https://byte.edusaint.in/api/v1/classes/$_classId/courses"),
+        headers: {
+          'Authorization': 'Bearer $_authToken',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        final List data = decoded['data'] ?? [];
+
+        subjects = data.map((e) => Course.fromJson(e)).toList();
+      } else {
+        subjects = [];
+      }
+    } catch (e) {
+      subjects = [];
+    }
+
+    setState(() => isLoading = false);
+  }
+
+  // ================= ICON =================
+  IconData getSubjectIcon(String name) {
+    final lower = name.toLowerCase();
+
+    if (lower.contains("math")) return Icons.calculate;
+    if (lower.contains("science")) return Icons.science;
+    if (lower.contains("english")) return Icons.menu_book;
+    if (lower.contains("social")) return Icons.public;
+    if (lower.contains("computer")) return Icons.computer;
+    if (lower.contains("physics")) return Icons.bolt;
+    if (lower.contains("chemistry")) return Icons.science;
+    if (lower.contains("biology")) return Icons.biotech;
+
+    return Icons.book;
+  }
+
+  // ================= GRADIENT =================
+  List<Color> getGradient(int index) {
+    final gradients = [
+      [Color(0xFF667EEA), Color(0xFF764BA2)],
+      [Color(0xFF43E97B), Color(0xFF38F9D7)],
+      [Color(0xFFFFA726), Color(0xFFFF7043)],
+      [Color(0xFF42A5F5), Color(0xFF478ED1)],
+      [Color(0xFFEC407A), Color(0xFFFF7043)],
+      [Color(0xFFAB47BC), Color(0xFF7E57C2)],
+    ];
+    return gradients[index % gradients.length];
+  }
+
+  // ================= UI =================
   @override
   Widget build(BuildContext context) {
-    final Color themeColor = const Color(0xFF1B2B57);
-
-    final List<Map<String, dynamic>> topResults = [
-      {
-        'subject': 'Science',
-        'score': '80%',
-        'color1': Colors.greenAccent,
-        'color2': Colors.green,
-        'rank': '🥇',
-      },
-      {
-        'subject': 'English',
-        'score': '78%',
-        'color1': Colors.lightBlueAccent,
-        'color2': Colors.blue,
-        'rank': '🥈',
-      },
-      {
-        'subject': 'G.K',
-        'score': '75%',
-        'color1': Colors.orangeAccent,
-        'color2': Colors.deepOrange,
-        'rank': '🥉',
-      },
-    ];
-
-    final subjects = [
-      "Maths",
-      "Science",
-      "Social Science",
-      "English",
-      "Hindi",
-      "Computer Science",
-      "General Knowledge",
-    ];
-
-    final subjectIcons = [
-      Icons.calculate,
-      Icons.science,
-      Icons.public,
-      Icons.menu_book,
-      Icons.language,
-      Icons.computer,
-      Icons.lightbulb,
-    ];
-
-    final subjectColors = [
-      const Color(0xFFD8C8FF),
-      const Color(0xFFA5F0E9),
-      const Color(0xFFFFC9A3),
-      const Color(0xFFB3E5BE),
-      const Color(0xFFFFB6A3),
-      const Color(0xFFD5D4FF),
-      const Color(0xFFFFECA3),
-    ];
-
     return MainScaffold(
       selectedIndex: 2,
-
-      // ✅ ONLY bodyBuilder (as MainScaffold expects)
-      bodyBuilder: (int? selectedClassId) {
-        return LayoutBuilder(
+      body: RefreshIndicator(
+        onRefresh: _loadSubjects,
+        child: LayoutBuilder(
           builder: (context, constraints) {
-            final double width = constraints.maxWidth;
-            final bool isSmall = width < 360;
-            final bool isLarge = width > 600;
-            final double fontScale = width / 400;
+            final width = constraints.maxWidth;
 
             int gridCount = 3;
-            if (isSmall) gridCount = 2;
-            if (isLarge) gridCount = 4;
+            if (width < 360) gridCount = 2;
+            if (width > 600) gridCount = 4;
 
             return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.all(width * 0.05),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 🔥 TOP PREMIUM CARD
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(width * 0.05),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF4CAF50),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF7E5F), Color(0xFFFFC371)],
+                      ),
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Try Improving Social Studies",
-                          style: TextStyle(
-                            fontSize: 16 * fontScale,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: width * 0.02),
-                        Text(
-                          "Attend a test on History to boost your XP",
-                          style: TextStyle(
-                            fontSize: 14 * fontScale,
-                            color: Colors.white.withOpacity(0.9),
-                          ),
-                        ),
-                        SizedBox(height: width * 0.05),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                vertical: width * 0.03,
-                                horizontal: width * 0.1,
-                              ),
-                              elevation: 2,
-                            ),
-                            child: Text(
-                              "Start",
-                              style: TextStyle(
-                                color: const Color(0xFF4CAF50),
-                                fontSize: 15 * fontScale,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: const Text(
+                      "🔥 Practice daily & boost your score!",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
 
+                  SizedBox(height: width * 0.06),
+
+                  // 💎 GLASS CARD
                   SizedBox(height: width * 0.07),
 
-                  Text(
-                    "All Subjects",
-                    style: TextStyle(
-                      fontSize: 20 * fontScale,
-                      fontWeight: FontWeight.bold,
-                      color: themeColor,
-                    ),
+                  // HEADER
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "All Subjects",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      DropdownButton<ClassItem>(
+                        value: selectedClass,
+                        items: classes.map((cls) {
+                          return DropdownMenuItem(
+                            value: cls,
+                            child: Text(cls.name),
+                          );
+                        }).toList(),
+                        onChanged: (cls) async {
+                          if (cls == null) return;
+
+                          setState(() {
+                            selectedClass = cls;
+                            _classId = cls.id;
+                          });
+
+                          await _saveClass(cls.id);
+                          await _loadSubjects();
+                        },
+                      ),
+                    ],
                   ),
 
-                  SizedBox(height: width * 0.04),
+                  SizedBox(height: width * 0.05),
 
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: subjects.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: gridCount,
-                      mainAxisSpacing: width * 0.04,
-                      crossAxisSpacing: width * 0.04,
-                      childAspectRatio: 0.9,
-                    ),
-                    itemBuilder: (context, index) {
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        decoration: BoxDecoration(
-                          color: subjectColors[index],
+                  // GRID
+                  if (isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: subjects.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: gridCount,
+                        crossAxisSpacing: width * 0.04,
+                        mainAxisSpacing: width * 0.04,
+                      ),
+                      itemBuilder: (context, index) {
+                        final subject = subjects[index];
+                        final gradient = getGradient(index);
+
+                        return InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 6,
-                              offset: Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: InkWell(
                           onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '${subjects[index]} button is tapped',
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PracticeDetailScreen(
+                                  classId: _classId!,
+                                  courseId: subject.id,
                                 ),
-                                behavior: SnackBarBehavior.floating,
-                                backgroundColor: themeColor,
                               ),
                             );
                           },
-                          borderRadius: BorderRadius.circular(20),
-                          child: Padding(
-                            padding: EdgeInsets.all(width * 0.03),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: gradient),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(
+                                  blurRadius: 10,
+                                  color: Colors.black12,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                            ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  subjectIcons[index],
-                                  color: themeColor,
-                                  size: width * 0.1,
+                                  getSubjectIcon(subject.name),
+                                  size: 28,
+                                  color: Colors.white,
                                 ),
-                                SizedBox(height: width * 0.03),
+                                const SizedBox(height: 10),
                                 Text(
-                                  subjects[index],
+                                  subject.name,
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: isSmall ? 12 : 14 * fontScale,
-                                    fontWeight: FontWeight.bold,
-                                    color: themeColor,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  SizedBox(height: width * 0.08),
-
-                  Text(
-                    "Top Results",
-                    style: TextStyle(
-                      fontSize: 20 * fontScale,
-                      fontWeight: FontWeight.bold,
-                      color: themeColor,
-                    ),
-                  ),
-
-                  SizedBox(height: width * 0.04),
-
-                  SizedBox(
-                    height: width * 0.5,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: topResults.length,
-                      separatorBuilder: (_, __) =>
-                          SizedBox(width: width * 0.04),
-                      itemBuilder: (context, index) {
-                        final result = topResults[index];
-                        final scoreRaw = result['score'];
-                        final score =
-                            double.parse(scoreRaw.replaceAll('%', '')) / 100;
-
-                        return Container(
-                          width: width * 0.45,
-                          padding: EdgeInsets.all(width * 0.04),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [result['color1'], result['color2']],
-                            ),
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              Text(
-                                result['rank'],
-                                style: TextStyle(
-                                  fontSize: 28 * fontScale,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Icon(Icons.emoji_events, color: Colors.white),
-                              Text(
-                                result['subject'],
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                "Score: $scoreRaw",
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              LinearProgressIndicator(
-                                value: score,
-                                color: Colors.white,
-                                backgroundColor: Colors.white.withOpacity(0.3),
-                              ),
-                            ],
-                          ),
                         );
                       },
                     ),
-                  ),
+
+                  SizedBox(height: width * 0.08),
                 ],
               ),
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
+
+  // ================= GLASS =================
+  Widget _glassCard(double width, {required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(width * 0.04),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+// ================= MODELS =================
+class Course {
+  final int id;
+  final String name;
+
+  Course({required this.id, required this.name});
+
+  factory Course.fromJson(Map<String, dynamic> json) {
+    return Course(id: json['id'] ?? 0, name: json['title'] ?? 'Subject');
+  }
+}
+
+class ClassItem {
+  final int id;
+  final String name;
+
+  ClassItem({required this.id, required this.name});
+
+  factory ClassItem.fromJson(Map<String, dynamic> json) {
+    return ClassItem(
+      id: json['id'],
+      name: json['name'] ?? json['title'] ?? 'Class',
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is ClassItem && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

@@ -25,64 +25,123 @@ class _LearnScreenState extends State<LearnScreen> {
   String get apiUrl =>
       'https://byte.edusaint.in/api/v1/courses/${widget.courseId}/lessons';
 
+  // ---------------- OVERALL PROGRESS ----------------
+  double get overallProgress {
+    if (chapters.isEmpty) return 0.0;
+
+    double total = 0;
+    for (var chapter in chapters) {
+      total += (chapter['progress'] ?? 0.0);
+    }
+
+    return total / chapters.length;
+  }
+
   @override
   void initState() {
     super.initState();
     fetchLessons();
   }
 
+  // ---------------- API CALL (FIXED) ----------------
   Future<void> fetchLessons() async {
     try {
       final res = await http.get(Uri.parse(apiUrl));
-      final List data = jsonDecode(res.body)['data'];
+
+      if (res.statusCode != 200) {
+        throw Exception("API Failed: ${res.statusCode}");
+      }
+
+      final decoded = jsonDecode(res.body);
+
+      // ✅ SAFE DATA EXTRACTION
+      final List data = (decoded != null && decoded['data'] is List)
+          ? decoded['data']
+          : [];
 
       final parsed = data.map<Map<String, dynamic>>((item) {
-        final int id = int.tryParse(item['id'].toString()) ?? 0;
-        final title = (item['title'] ?? item['topic_name'] ?? 'Lesson $id')
-            .toString();
-        final double progress = item['progress'] != null
-            ? (item['progress'] as num).toDouble().clamp(0.0, 1.0)
-            : item['completion_percentage'] != null
-            ? ((item['completion_percentage'] as num) / 100).clamp(0.0, 1.0)
-            : item['is_completed'] == true
-            ? 1.0
-            : 0.0;
-        final bool isCompleted = progress >= 1.0;
+        final int id = int.tryParse(item['id']?.toString() ?? "0") ?? 0;
+
+        final String title =
+            (item['title'] ?? item['topic_name'] ?? 'Lesson $id').toString();
+
+        double progress = 0.0;
+
+        final rawProgress = item['progress'];
+
+        // ✅ SAFE PROGRESS PARSING
+        if (rawProgress is num) {
+          progress = rawProgress.toDouble();
+        } else if (rawProgress is String) {
+          progress = double.tryParse(rawProgress) ?? 0.0;
+        } else if (item['completion_percentage'] != null) {
+          final cp = item['completion_percentage'];
+          if (cp is num) {
+            progress = (cp / 100).toDouble();
+          } else if (cp is String) {
+            progress = (double.tryParse(cp) ?? 0.0) / 100;
+          }
+        } else if (item['is_completed'] == true) {
+          progress = 1.0;
+        }
+
+        progress = progress.clamp(0.0, 1.0);
 
         return {
           "id": id,
           "title": title,
           "progress": progress,
-          "isCompleted": isCompleted,
+          "isCompleted": progress >= 1.0,
           "description": item['description'] ?? '',
         };
       }).toList();
 
       if (!mounted) return;
+
       setState(() {
         chapters = parsed;
         isLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint("❌ Lessons Error: $e");
+
       if (!mounted) return;
-      setState(() => isLoading = false);
+
+      setState(() {
+        chapters = [];
+        isLoading = false;
+      });
     }
   }
 
-  void onChapterTap(String chapter, int lessonId) {
-    Navigator.push(
+  // ---------------- NAVIGATION ----------------
+  void onChapterTap(int index) async {
+    if (index >= chapters.length) return; // ✅ safety
+
+    final chapter = chapters[index];
+
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChapterDetailScreen(
           subject: widget.subject,
-          chapter: chapter,
-          lessonId: lessonId,
+          chapter: chapter['title'],
+          lessonId: chapter['id'],
           courseId: widget.courseId,
         ),
       ),
     );
+
+    // ✅ LOCAL UPDATE SAFE
+    if (result == true && mounted && index < chapters.length) {
+      setState(() {
+        chapters[index]['progress'] = 1.0;
+        chapters[index]['isCompleted'] = true;
+      });
+    }
   }
 
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
@@ -90,163 +149,152 @@ class _LearnScreenState extends State<LearnScreen> {
 
     return MainScaffold(
       selectedIndex: 1,
-      bodyBuilder: (_) {
-        return isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: w * .05,
-                      vertical: h * .015,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded),
-                        ),
-                        Text(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // ---------------- HEADER ----------------
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: w * .05,
+                    vertical: h * .015,
+                  ),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          }
+                        },
+                        child: const Icon(Icons.arrow_back_ios_new),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: Text(
                           widget.subject,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: w * .052,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: w * .04,
-                            vertical: h * .008,
+                      ),
+
+                      // PROGRESS BADGE
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: w * .04,
+                          vertical: h * .008,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade200,
+                              Colors.blue.shade400,
+                            ],
                           ),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Text(
+                          "${(overallProgress * 100).toStringAsFixed(0)}%",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ---------------- LIST ----------------
+                Expanded(
+                  child: ListView.builder(
+                    padding: EdgeInsets.symmetric(horizontal: w * .05),
+                    itemCount: chapters.length,
+                    itemBuilder: (context, index) {
+                      final chapter = chapters[index];
+
+                      final bool isCompleted = chapter['isCompleted'] ?? false;
+                      final double progress = (chapter['progress'] ?? 0.0)
+                          .toDouble();
+
+                      return GestureDetector(
+                        onTap: () => onChapterTap(index),
+                        child: Container(
+                          margin: EdgeInsets.only(bottom: h * .025),
+                          padding: EdgeInsets.all(w * .05),
                           decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
                             gradient: LinearGradient(
-                              colors: [
-                                Colors.blue.shade200,
-                                Colors.blue.shade400,
-                              ],
+                              colors: isCompleted
+                                  ? [
+                                      Colors.green.shade50,
+                                      Colors.green.shade100,
+                                    ]
+                                  : [
+                                      Colors.orange.shade50,
+                                      Colors.orange.shade100,
+                                    ],
                             ),
-                            borderRadius: BorderRadius.circular(30),
                           ),
-                          child: Row(
-                            children: const [
-                              Icon(
-                                Icons.trending_up,
-                                color: Colors.white,
-                                size: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // TOP ROW
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Chapter ${index + 1}",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                  Text(
+                                    isCompleted ? "Completed" : "In Progress",
+                                    style: TextStyle(
+                                      color: isCompleted
+                                          ? Colors.green
+                                          : Colors.orange,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              SizedBox(width: 6),
+
+                              const SizedBox(height: 10),
+
                               Text(
-                                "38%",
-                                style: TextStyle(color: Colors.white),
+                                chapter['title'] ?? "",
+                                style: TextStyle(
+                                  fontSize: w * .045,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // PROGRESS BAR
+                              LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 6,
+                                backgroundColor: Colors.white,
+                                valueColor: AlwaysStoppedAnimation(
+                                  isCompleted ? Colors.green : Colors.orange,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.symmetric(horizontal: w * .05),
-                      itemCount: chapters.length,
-                      itemBuilder: (context, index) {
-                        final chapter = chapters[index];
-                        final title = chapter['title'];
-                        final progress = chapter['progress'];
-                        final isCompleted = chapter['isCompleted'];
-
-                        return GestureDetector(
-                          onTap: () => onChapterTap(title, chapter['id']),
-                          child: Container(
-                            margin: EdgeInsets.only(bottom: h * .028),
-                            padding: EdgeInsets.all(w * .05),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: LinearGradient(
-                                colors: isCompleted
-                                    ? [
-                                        Colors.green.shade50,
-                                        Colors.green.shade100,
-                                      ]
-                                    : [
-                                        Colors.orange.shade50,
-                                        Colors.orange.shade100,
-                                      ],
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 8,
-                                  offset: Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Chapter ${index + 1}",
-                                      style: const TextStyle(
-                                        color: Colors.blue,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                      child: Text(
-                                        isCompleted
-                                            ? "Completed"
-                                            : "In Progress",
-                                        style: TextStyle(
-                                          color: isCompleted
-                                              ? Colors.green
-                                              : Colors.orange,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  title,
-                                  style: TextStyle(
-                                    fontSize: w * .046,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const SizedBox(height: 8),
-                                LinearProgressIndicator(
-                                  value: progress,
-                                  minHeight: 7,
-                                  backgroundColor: Colors.white,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    isCompleted ? Colors.green : Colors.orange,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-      },
+                ),
+              ],
+            ),
     );
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'Mainscaffold.dart';
+import 'mainscaffold.dart';
 
 class EdusaintView extends StatelessWidget {
   const EdusaintView({super.key});
@@ -8,7 +8,9 @@ class EdusaintView extends StatelessWidget {
   Widget build(BuildContext context) {
     return MainScaffold(
       selectedIndex: 2,
-      bodyBuilder: (_) => const _EdusaintBody(),
+
+      // ✅ FIX: use body instead of bodyBuilder
+      body: const _EdusaintBody(),
     );
   }
 }
@@ -46,7 +48,7 @@ class _EdusaintBody extends StatelessWidget {
             children: [
               // TITLE
               Text(
-                "Welcome to Edusaint",
+                "Welcome to EduSaint",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -54,47 +56,54 @@ class _EdusaintBody extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               SizedBox(height: height * 0.02),
+
               // DESCRIPTION
               Text(
-                "Our App helps students from Classes 1-10 master subjects with short, easy to understand lessons, daily practice, and fun interactive activities.",
+                "Our app helps students from Classes 1–10 master subjects with short lessons, daily practice, and interactive activities.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.90),
+                  color: Colors.white.withOpacity(0.9),
                   fontSize: width * 0.043,
                   height: 1.4,
                 ),
               ),
+
               SizedBox(height: height * 0.04),
-              // WHAT WE OFFER
+
+              // OFFER TITLE
               Text(
-                "What we Offer",
+                "What We Offer",
                 style: TextStyle(
                   fontSize: width * 0.065,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
+
               SizedBox(height: height * 0.02),
 
-              /// HORIZONTAL SCROLLABLE OFFER CARDS
+              // OFFER CARDS
               SizedBox(
                 height: 120,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  children: [
-                    offerCard("Bite Sized\nLessons"),
+                  children: const [
+                    _OfferCard("Bite Sized\nLessons"),
                     SizedBox(width: 12),
-                    offerCard("Practice that\nBuilds Skill"),
+                    _OfferCard("Practice that\nBuilds Skill"),
                     SizedBox(width: 12),
-                    offerCard("Daily\nProgress Tracking"),
+                    _OfferCard("Daily\nProgress Tracking"),
                   ],
                 ),
               ),
+
               SizedBox(height: height * 0.04),
-              // UNLOCK EXPERIENCE
+
+              // PREMIUM TITLE
               Text(
-                "Unlock the full\nLearning Experience",
+                "Unlock Full Learning Experience",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: width * 0.065,
@@ -102,40 +111,41 @@ class _EdusaintBody extends StatelessWidget {
                   color: Colors.white,
                 ),
               ),
+
               SizedBox(height: height * 0.02),
+
               Text(
-                "Premium learners finish more chapters, build stronger subject foundations, and practice better with unlimited access.",
+                "Premium learners complete more chapters and build stronger concepts with unlimited access.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: width * 0.043,
                   color: Colors.white.withOpacity(0.9),
-                  height: 1.4,
                 ),
               ),
+
               SizedBox(height: height * 0.04),
-              // PLANS (MATCHED TO SCREENSHOT)
+
+              // PLANS
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: planCard(
+                    child: _PlanCard(
                       title: "Yearly",
                       trial: "14-day free trial",
-                      price: "₹ 999/Year",
-                      onTap: () {},
+                      price: "₹999/year",
                     ),
                   ),
-                  SizedBox(width: 14),
+                  const SizedBox(width: 14),
                   Expanded(
-                    child: planCard(
+                    child: _PlanCard(
                       title: "Monthly",
                       trial: "7-day free trial",
-                      price: "₹ 199/Month",
-                      onTap: () {},
+                      price: "₹199/month",
                     ),
                   ),
                 ],
               ),
+
               SizedBox(height: height * 0.03),
             ],
           ),
@@ -143,17 +153,24 @@ class _EdusaintBody extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// OFFER CARD
-  Widget offerCard(String text) {
+// ---------------- OFFER CARD ----------------
+class _OfferCard extends StatelessWidget {
+  final String text;
+
+  const _OfferCard(this.text);
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: 120,
       decoration: BoxDecoration(
         color: const Color(0xFF1F2234),
         borderRadius: BorderRadius.circular(18),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
       alignment: Alignment.center,
+      padding: const EdgeInsets.all(8),
       child: Text(
         text,
         textAlign: TextAlign.center,
@@ -164,30 +181,29 @@ class _EdusaintBody extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// PLAN CARD (FULLY MATCHED UI)
-  Widget planCard({
-    required String title,
-    required String trial,
-    required String price,
-    required VoidCallback onTap,
-  }) {
+// ---------------- PLAN CARD ----------------
+class _PlanCard extends StatelessWidget {
+  final String title;
+  final String trial;
+  final String price;
+
+  const _PlanCard({
+    required this.title,
+    required this.trial,
+    required this.price,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF9FB4FF), Color(0xFF728BFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blueAccent.withOpacity(0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,47 +211,24 @@ class _EdusaintBody extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 24,
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            trial,
-            style: const TextStyle(fontSize: 15, color: Colors.white),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            price,
-            style: const TextStyle(
-              fontSize: 21,
+              fontSize: 22,
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0D1636),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text(
-                "Choose Plan",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+          const SizedBox(height: 6),
+          Text(trial, style: const TextStyle(color: Colors.white)),
+          const SizedBox(height: 6),
+          Text(
+            price,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 12),
+          ElevatedButton(onPressed: () {}, child: const Text("Choose Plan")),
         ],
       ),
     );

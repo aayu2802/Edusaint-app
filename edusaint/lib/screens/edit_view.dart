@@ -1,12 +1,11 @@
-// screens/edit_profile_screen.dart
+import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
-import '../services/profile_service.dart';
 import 'profile_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -17,9 +16,6 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  // 🔐 Replace with actual token
-  String token = 'YOUR_BEARER_TOKEN';
-
   final Color themeColor = const Color(0xFF1B2B57);
   final Color softWhite = const Color(0xFFF9FAFB);
 
@@ -31,7 +27,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController classController = TextEditingController();
 
-  String? avatarUrl;
+  String? token;
+  int? studentId;
+
+  String? imagePath;
   File? selectedImageFile;
 
   final ImagePicker _picker = ImagePicker();
@@ -40,198 +39,195 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    fetchProfile();
+    initProfile();
   }
 
-  // --------------------------------------------------
-  // FETCH PROFILE
-  // --------------------------------------------------
+  // ---------------- INIT ----------------
+  Future<void> initProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    token = prefs.getString("token");
+    studentId = prefs.getInt("student_id");
+
+    if (token == null || studentId == null) {
+      debugPrint("❌ Missing token or studentId");
+      setState(() => isLoading = false);
+      return;
+    }
+
+    await fetchProfile();
+  }
+
+  // ---------------- FETCH PROFILE ----------------
   Future<void> fetchProfile() async {
     try {
       setState(() => isLoading = true);
 
-      final data = await ProfileService.getProfile(token);
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/v1/students/69"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+      );
 
-      nameController.text = data['name'] ?? '';
-      emailController.text = data['email'] ?? '';
-      phoneController.text = data['mobile'] ?? '';
-      classController.text = data['class'] ?? '';
-      avatarUrl = data['image'];
+      if (response.statusCode != 200) {
+        throw Exception("Failed to load profile");
+      }
+
+      final data = jsonDecode(response.body);
+
+      setState(() {
+        nameController.text = data['name']?.toString() ?? '';
+        emailController.text = data['email']?.toString() ?? '';
+        phoneController.text = data['mobile']?.toString() ?? '';
+        classController.text = data['class']?.toString() ?? '';
+        imagePath = data['image'] ?? '';
+      });
     } catch (e) {
-      debugPrint('PROFILE ERROR: $e');
+      debugPrint("PROFILE ERROR: $e");
+
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to load profile')));
+      ).showSnackBar(const SnackBar(content: Text("Failed to load profile")));
     } finally {
       setState(() => isLoading = false);
     }
   }
 
-  // --------------------------------------------------
-  // AVATAR IMAGE HANDLER (NO ASSET IMAGE)
-  // --------------------------------------------------
+  // ---------------- IMAGE PROVIDER ----------------
   ImageProvider<Object>? _avatarImageProvider() {
     if (selectedImageFile != null) {
       return FileImage(selectedImageFile!);
     }
 
-    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
-      if (avatarUrl!.startsWith('http')) {
-        return NetworkImage(avatarUrl!);
-      }
-      if (avatarUrl!.startsWith('/')) {
-        return NetworkImage('$baseUrl$avatarUrl');
+    if (imagePath != null && imagePath!.isNotEmpty) {
+      if (imagePath!.startsWith("http")) {
+        return NetworkImage(imagePath!);
+      } else {
+        return NetworkImage("$baseUrl$imagePath");
       }
     }
 
     return null;
   }
 
-  // --------------------------------------------------
-  // IMAGE PICKER
-  // --------------------------------------------------
+  // ---------------- PICK IMAGE ----------------
   Future<void> _pickImage(ImageSource source) async {
-    try {
-      final picked = await _picker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1200,
-        maxHeight: 1200,
-      );
+    final picked = await _picker.pickImage(source: source, imageQuality: 85);
 
-      if (picked != null) {
-        setState(() {
-          selectedImageFile = File(picked.path);
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to pick image')));
+    if (picked != null) {
+      setState(() {
+        selectedImageFile = File(picked.path);
+      });
     }
   }
 
-  void _showAvatarPicker() {
+  void _showImageOptions() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Choose from gallery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Take a photo'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: const Text('Cancel'),
-                onTap: () => Navigator.pop(context),
-              ),
-            ],
-          ),
+        return Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo),
+              title: const Text("Gallery"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera),
+              title: const Text("Camera"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+          ],
         );
       },
     );
   }
 
-  // --------------------------------------------------
-  // UPDATE PROFILE
-  // --------------------------------------------------
-  Future<void> _updateProfile() async {
+  // ---------------- UPDATE PROFILE DATA ----------------
+  Future<void> updateProfileData() async {
+    final response = await http.post(
+      Uri.parse("$baseUrl/api/v1/students/69"),
+      headers: {"Authorization": "Bearer $token", "Accept": "application/json"},
+      body: {
+        "name": nameController.text.trim(),
+        "class": classController.text.trim(),
+        "mobile": phoneController.text.trim(),
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Profile update failed");
+    }
+  }
+
+  // ---------------- UPDATE AVATAR ----------------
+  Future<void> updateAvatar() async {
+    if (selectedImageFile == null) return;
+
+    var request = http.MultipartRequest(
+      "POST",
+      Uri.parse("$baseUrl/api/v1/students/69/avatar"),
+    );
+
+    request.headers["Authorization"] = "Bearer $token";
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        "avatar", // ⚠️ if backend expects "image", change here
+        selectedImageFile!.path,
+      ),
+    );
+
+    final response = await request.send();
+
+    if (response.statusCode != 200) {
+      throw Exception("Avatar upload failed");
+    }
+  }
+
+  // ---------------- MAIN UPDATE ----------------
+  Future<void> updateProfile() async {
     if (nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Name cannot be empty')));
+      ).showSnackBar(const SnackBar(content: Text("Name cannot be empty")));
       return;
     }
 
     setState(() => isUpdating = true);
 
     try {
-      final res = await ProfileService.updateProfile(
-        token: token,
-        name: nameController.text.trim(),
-        studentClass: classController.text.trim(),
-        mobile: phoneController.text.trim(),
-        imageFile: selectedImageFile,
+      await updateProfileData();
+      await updateAvatar();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profile updated successfully")),
       );
 
-      if (res['status'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully')),
-        );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['message'] ?? 'Update failed')),
-        );
-      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
+      );
     } catch (e) {
+      debugPrint("UPDATE ERROR: $e");
+
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Update failed')));
+      ).showSnackBar(const SnackBar(content: Text("Update failed")));
     } finally {
       setState(() => isUpdating = false);
     }
   }
 
-  // --------------------------------------------------
-  // TEXT FIELD BUILDER (UNCHANGED STYLE)
-  // --------------------------------------------------
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller, {
-    IconData? icon,
-    bool readOnly = false,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: themeColor.withOpacity(0.9),
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          readOnly: readOnly,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: themeColor),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --------------------------------------------------
-  // UI
-  // --------------------------------------------------
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -239,136 +235,102 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
       backgroundColor: softWhite,
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 120),
+            padding: const EdgeInsets.fromLTRB(20, 120, 20, 20),
             child: Column(
               children: [
                 // AVATAR
-                Center(
-                  child: Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.35),
-                              blurRadius: 15,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: CircleAvatar(
-                          radius: 55,
-                          backgroundColor: Colors.grey.shade200,
-                          backgroundImage: _avatarImageProvider(),
-                          child: _avatarImageProvider() == null
-                              ? Icon(Icons.person, size: 55, color: themeColor)
-                              : null,
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _showAvatarPicker,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: themeColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 55,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: _avatarImageProvider(),
+                      child: _avatarImageProvider() == null
+                          ? Icon(Icons.person, size: 50, color: themeColor)
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _showImageOptions,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: themeColor,
+                            shape: BoxShape.circle,
                           ),
+                          child: const Icon(Icons.edit, color: Colors.white),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
 
-                const SizedBox(height: 35),
-
-                _buildTextField(
-                  "Full Name",
-                  nameController,
-                  icon: Icons.person,
-                ),
-                const SizedBox(height: 18),
-                _buildTextField(
-                  "Email Address",
-                  emailController,
-                  icon: Icons.email,
-                  readOnly: true,
-                ),
-                const SizedBox(height: 18),
-                _buildTextField(
-                  "Phone Number",
-                  phoneController,
-                  icon: Icons.phone,
-                ),
-                const SizedBox(height: 18),
-                _buildTextField("Class", classController, icon: Icons.school),
                 const SizedBox(height: 30),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isUpdating ? null : _updateProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: themeColor,
-                      minimumSize: const Size(double.infinity, 52),
-                    ),
-                    child: isUpdating
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            'Update',
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
+                _buildField("Name", nameController),
+                _buildField("Email", emailController, readOnly: true),
+                _buildField("Mobile", phoneController),
+                _buildField("Class", classController),
+
+                const SizedBox(height: 30),
+
+                ElevatedButton(
+                  onPressed: isUpdating ? null : updateProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: themeColor,
+                    minimumSize: const Size(double.infinity, 50),
                   ),
+                  child: isUpdating
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Update"),
                 ),
               ],
             ),
           ),
 
-          // APP BAR
+          // TOP BAR
           Container(
-            height: kToolbarHeight + 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            alignment: Alignment.bottomCenter,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0A0A0F), Color(0xFF1A2339)],
-              ),
-            ),
+            height: 100,
+            color: themeColor,
+            padding: const EdgeInsets.only(top: 40),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
                   onPressed: () => Navigator.pop(context),
                 ),
                 const Text(
                   "Edit Profile",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 18),
                 ),
-                const Icon(FontAwesomeIcons.qrcode, color: Colors.white),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildField(
+    String label,
+    TextEditingController controller, {
+    bool readOnly = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: TextField(
+        controller: controller,
+        readOnly: readOnly,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
       ),
     );
   }
